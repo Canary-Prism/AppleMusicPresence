@@ -24,7 +24,6 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -38,6 +37,8 @@ public class Main implements Runnable {
         System.setProperty("canaryprism.presence.apple.music", Path.of(DIRS.dataDir, "logs").toString());
         ImageIO.scanForPlugins();
     }
+    
+    public static final int MAXIMUM_IMAGE_CACHE_SIZE = 2048;
     
     private static final Logger log = LoggerFactory.getLogger(Main.class);
     
@@ -99,7 +100,7 @@ public class Main implements Runnable {
         
         
         this.image_cache = Caffeine.newBuilder()
-                .expireAfterAccess(Duration.ofMinutes(30))
+                .maximumSize(MAXIMUM_IMAGE_CACHE_SIZE)
                 .buildAsync((track) -> {
                     if (track.track().getArtworks().length == 0)
                         return null;
