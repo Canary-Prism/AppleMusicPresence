@@ -1,0 +1,51 @@
+
+[versions]
+discord-rpc = "2.0.1"
+
+obstmusic = "0.9.9"
+
+jda = "5.5.1"
+
+slf4j = "2.0.17"
+log4j = "2.24.3"
+
+directories = "26"
+
+picocli = "4.7.6"
+
+json = "20250107"
+
+caffeine = "3.2.0"
+
+imageio-webp = "0.1.6"
+
+
+junit = "5.10.0"
+
+[libraries]
+discord-rpc = { module = "club.minnced:java-discord-rpc", version.ref = "discord-rpc" }
+
+obstmusic = { module = "com.tagtraum:obstmusic", version.ref = "obstmusic" }
+
+jda = { module = "net.dv8tion:JDA", version.ref = "jda" }
+
+slf4j = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+log4j-slf4j2-impl = { module = "org.apache.logging.log4j:log4j-slf4j2-impl", version.ref = "log4j" }
+log4j-core = { module = "org.apache.logging.log4j:log4j-core", version.ref = "log4j" }
+
+directories = { module = "dev.dirs:directories", version.ref = "directories" }
+
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+
+json = { module = "org.json:json", version.ref = "json" }
+
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
+
+imageio-webp = { module = "org.sejda.imageio:webp-imageio", version.ref = "imageio-webp" }
+
+
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+
+[bundles]
+log4j = ["log4j-slf4j2-impl", "log4j-core"]
