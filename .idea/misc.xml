@@ -3,6 +3,7 @@
   <component name="CodeInsightWorkspaceSettings">
     <option name="optimizeImportsOnTheFly" value="true" />
   </component>
+  <component name="ExternalStorageConfigurationManager" enabled="true" />
   <component name="ProjectInspectionProfilesVisibleTreeState">
     <entry key="Project Default">
       <profile-state>
@@ -133,7 +134,5 @@
       </profile-state>
     </entry>
   </component>
-  <component name="VcsManagerConfiguration">
-    <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
-  </component>
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_23" project-jdk-name="temurin-22" project-jdk-type="JavaSDK" />
 </project>
