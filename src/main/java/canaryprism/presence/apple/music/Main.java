@@ -25,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Base64;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -65,6 +66,16 @@ public class Main implements Runnable {
             }
         }
         
+        var image_cache_path = Path.of(DIRS.cacheDir, "images");
+        if (Files.notExists(image_cache_path)) {
+            log.debug("image cache path '{}' doesn't exist, creating directories", image_cache_path);
+            try {
+                Files.createDirectories(image_cache_path);
+            } catch (IOException e) {
+                throw new RuntimeException("failed to create directory " + image_cache_path, e);
+            }
+        }
+        
         var event_handler = new DiscordEventHandlers();
         event_handler.ready = (user) -> log.info("Ready: {}", user.username);
         
@@ -101,10 +112,13 @@ public class Main implements Runnable {
         
         this.image_cache = Caffeine.newBuilder()
                 .maximumSize(MAXIMUM_IMAGE_CACHE_SIZE)
-                .buildAsync((track) -> {
-                    if (track.track().getArtworks().length == 0)
+                .buildAsync((container) -> {
+                    if (!(container instanceof RealTrack(var track)))
                         return null;
-                    var art = track.track().getArtworks()[0];
+                    
+                    if (track.getArtworks().length == 0)
+                        return null;
+                    var art = track.getArtworks()[0];
                     var data = art.getRawData().cast(Tdta.class).getTdta();
                     
 //                    var payload = new JSONObject()
@@ -122,7 +136,7 @@ public class Main implements Runnable {
                             .POST(HttpRequest.BodyPublishers.ofByteArray(form.getBody()))
                             .build();
                     
-                    log.info("uploading image for track {}", track.track().getName());
+                    log.info("uploading image for track {}", track.getName());
                     
                     var http_response = client.send(request, HttpResponse.BodyHandlers.ofString());
                     
@@ -132,9 +146,56 @@ public class Main implements Runnable {
                     return response.getJSONObject("image").getString("url");
                 });
         
+        loadImageCache(image_cache_path);
+        
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> saveImageCache(image_cache_path)));
+        
         executor.scheduleAtFixedRate(rpc::Discord_RunCallbacks, 0, 2, TimeUnit.SECONDS);
         
         executor.scheduleAtFixedRate(this::checkTrack, 0, 5, TimeUnit.SECONDS);
+    }
+    
+    private void saveImageCache(Path directory) {
+        log.info("saving image cache to '{}'", directory);
+        try (var files = Files.list(directory)) {
+            files.filter(Files::isRegularFile)
+                    .forEach(path -> {
+                        try {
+                            Files.delete(path);
+                        } catch (IOException e) {
+                            log.error("failed to clear cache directory: ", e);
+                        }
+                    });
+        } catch (IOException e) {
+            log.error("failed to access image cache path '{}': ", directory, e);
+        }
+        image_cache.synchronous()
+                .asMap()
+                .forEach((container, url) -> {
+                    var path = directory.resolve(String.valueOf(container.getTrackId()));
+                    try {
+                        Files.writeString(path, url, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                    } catch (IOException e) {
+                        log.error("failed to write image cache to disk: ", e);
+                    }
+                });
+    }
+    
+    private void loadImageCache(Path directory) {
+        log.info("loading image cache from '{}'", directory);
+        try (var files = Files.list(directory)) {
+            files.filter(Files::isRegularFile)
+                    .forEach((path) -> {
+                        try {
+                            var url = Files.readString(path);
+                            image_cache.put(new StoredTrack(Integer.parseInt(path.getFileName().toString())), CompletableFuture.completedFuture(url));
+                        } catch (IOException e) {
+                            log.error("failed to load image cache from disk: ", e);
+                        }
+                    });
+        } catch (IOException e) {
+            log.error("failed to access image cache path '{}': ", directory, e);
+        }
     }
     
 //    private byte[] toWebp(byte[] data) {
@@ -180,7 +241,7 @@ public class Main implements Runnable {
         presence.details = track.getName();
         presence.state = track.getArtist();
 
-        var future_image_url = image_cache.get(new TrackContainer(track));
+        var future_image_url = image_cache.get(new RealTrack(track));
         
         presence.largeImageKey = future_image_url.getNow(fallback_image);
         
