@@ -105,8 +105,9 @@ public class Main implements Runnable {
         }
         
         rpc.Discord_Initialize(application_id, event_handler, false, null);
-        
+
         log.info("initialised");
+        
         
         
         
@@ -220,9 +221,12 @@ public class Main implements Runnable {
     private volatile boolean status_active = false;
     
     private void checkTrack() {
+        checkTrack(false);
+    }
+    private void checkTrack(boolean force) {
         if (app.getPlayerState() == Epls.PLAYING) {
             var track = app.getCurrentTrack();
-            if (!status_active || track.getId() != last_track_id) {
+            if (!status_active || track.getId() != last_track_id || force) {
                 last_track_id = track.getId();
                 
                 updatePresence(track);
@@ -234,6 +238,8 @@ public class Main implements Runnable {
             log.info("presence cleared");
         }
     }
+    
+    private volatile boolean track_end_check = false;
     
     private void updatePresence(Track track) {
         var presence = new DiscordRichPresence();
@@ -252,11 +258,21 @@ public class Main implements Runnable {
         if (!future_image_url.isDone())
             future_image_url.thenRunAsync(() -> updatePresence(app.getCurrentTrack()));
         
-        presence.endTimestamp = (System.currentTimeMillis() / 1000) + ((long) (track.getFinish() - app.getPlayerPosition()));
+        var remaining = ((long) (track.getFinish() - app.getPlayerPosition()));
+        
+        presence.endTimestamp = (System.currentTimeMillis() / 1000) + remaining;
         
         log.info("presence updated: {} - {}", track.getArtist(), track.getName());
         
         rpc.Discord_UpdatePresence(presence);
+        
+        if (!track_end_check) {
+            track_end_check = true;
+            executor.schedule(() -> {
+                track_end_check = false;
+                checkTrack(true);
+            }, remaining + 1, TimeUnit.SECONDS);
+        }
     }
     
     @CommandLine.Command(
