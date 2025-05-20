@@ -272,7 +272,9 @@ public class Main implements Runnable {
         synchronized (this) {
             if (track_end_check == null) {
                 track_end_check = executor.schedule(() -> {
-                    track_end_check = null;
+                    synchronized (this) {
+                        track_end_check = null;
+                    }
                     checkTrack(true);
                 }, remaining + 1, TimeUnit.SECONDS);
             }
