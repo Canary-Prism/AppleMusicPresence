@@ -252,7 +252,7 @@ public class Main implements Runnable {
         if (!future_image_url.isDone())
             future_image_url.thenRunAsync(() -> updatePresence(app.getCurrentTrack()));
         
-        presence.endTimestamp = (System.currentTimeMillis() / 1000) + ((long) (track.getDuration() - app.getPlayerPosition()));
+        presence.endTimestamp = (System.currentTimeMillis() / 1000) + ((long) (track.getFinish() - app.getPlayerPosition()));
         
         log.info("presence updated: {} - {}", track.getArtist(), track.getName());
         
