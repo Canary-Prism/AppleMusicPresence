@@ -186,7 +186,7 @@ public class Main implements Runnable {
                     .forEach((path) -> {
                         try {
                             var url = Files.readString(path);
-                            image_cache.put(new StoredTrack(Integer.parseInt(path.getFileName().toString())), CompletableFuture.completedFuture(url));
+                            image_cache.put(new StoredTrack(path.getFileName().toString()), CompletableFuture.completedFuture(url));
                         } catch (IOException e) {
                             log.error("failed to load image cache from disk: ", e);
                         }

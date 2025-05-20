@@ -9,7 +9,7 @@ public record RealTrack(Track track) implements TrackContainer {
     @Override
     public boolean equals(Object o) {
         return (o instanceof TrackContainer container)
-                && this.getTrackId() == container.getTrackId();
+                && Objects.equals(this.getTrackId(), container.getTrackId());
     }
     
     @Override
