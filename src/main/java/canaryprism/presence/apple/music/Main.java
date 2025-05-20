@@ -25,10 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Base64;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @CommandLine.Command(subcommands = Main.Set.class)
 public class Main implements Runnable {
@@ -235,11 +232,17 @@ public class Main implements Runnable {
         } else if (status_active) {
             status_active = false;
             rpc.Discord_ClearPresence();
+            
+            synchronized (this) {
+                track_end_check.cancel(false);
+                track_end_check = null;
+            }
+            
             log.info("presence cleared");
         }
     }
     
-    private volatile boolean track_end_check = false;
+    private volatile ScheduledFuture<?> track_end_check;
     
     private void updatePresence(Track track) {
         var presence = new DiscordRichPresence();
@@ -266,12 +269,13 @@ public class Main implements Runnable {
         
         rpc.Discord_UpdatePresence(presence);
         
-        if (!track_end_check) {
-            track_end_check = true;
-            executor.schedule(() -> {
-                track_end_check = false;
-                checkTrack(true);
-            }, remaining + 1, TimeUnit.SECONDS);
+        synchronized (this) {
+            if (track_end_check == null) {
+                track_end_check = executor.schedule(() -> {
+                    track_end_check = null;
+                    checkTrack(true);
+                }, remaining + 1, TimeUnit.SECONDS);
+            }
         }
     }
     
