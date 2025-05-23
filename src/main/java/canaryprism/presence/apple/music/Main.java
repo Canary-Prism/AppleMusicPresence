@@ -226,6 +226,11 @@ public class Main implements Runnable {
             if (!status_active || track.getId() != last_track_id || force) {
                 last_track_id = track.getId();
                 
+                synchronized (this) {
+                    track_end_check.cancel(false);
+                    track_end_check = null;
+                }
+                
                 updatePresence(track);
                 status_active = true;
             }
@@ -271,12 +276,7 @@ public class Main implements Runnable {
         
         synchronized (this) {
             if (track_end_check == null) {
-                track_end_check = executor.schedule(() -> {
-                    synchronized (this) {
-                        track_end_check = null;
-                    }
-                    checkTrack(true);
-                }, remaining + 1, TimeUnit.SECONDS);
+                track_end_check = executor.schedule(() -> checkTrack(true), remaining + 1, TimeUnit.SECONDS);
             }
         }
     }
