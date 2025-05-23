@@ -227,7 +227,8 @@ public class Main implements Runnable {
                 last_track_id = track.getId();
                 
                 synchronized (this) {
-                    track_end_check.cancel(false);
+                    if (track_end_check != null)
+                        track_end_check.cancel(false);
                     track_end_check = null;
                 }
                 
@@ -239,7 +240,8 @@ public class Main implements Runnable {
             rpc.Discord_ClearPresence();
             
             synchronized (this) {
-                track_end_check.cancel(false);
+                if (track_end_check != null)
+                    track_end_check.cancel(false);
                 track_end_check = null;
             }
             
