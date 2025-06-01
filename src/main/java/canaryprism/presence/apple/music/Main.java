@@ -156,6 +156,8 @@ public class Main implements Runnable {
         executor.scheduleAtFixedRate(rpc::Discord_RunCallbacks, 0, 2, TimeUnit.SECONDS);
         
         executor.scheduleAtFixedRate(this::checkTrack, 0, 5, TimeUnit.SECONDS);
+        
+        executor.scheduleAtFixedRate(() -> saveImageCache(image_cache_path), 0, 10, TimeUnit.MINUTES);
     }
     
     private byte[] optimiseImage(byte[] data) throws IOException {
