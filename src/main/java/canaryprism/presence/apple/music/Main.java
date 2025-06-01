@@ -16,6 +16,9 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -119,6 +122,8 @@ public class Main implements Runnable {
                     var art = track.getArtworks()[0];
                     var data = art.getRawData().cast(Tdta.class).getTdta();
                     
+                    data = optimiseImage(data);
+                    
 //                    var payload = new JSONObject()
 //                            .put("key", "6d207e02198a847aa98d0a2a901485a5")
 //                            .put("action", "upload")
@@ -151,6 +156,24 @@ public class Main implements Runnable {
         executor.scheduleAtFixedRate(rpc::Discord_RunCallbacks, 0, 2, TimeUnit.SECONDS);
         
         executor.scheduleAtFixedRate(this::checkTrack, 0, 5, TimeUnit.SECONDS);
+    }
+    
+    private byte[] optimiseImage(byte[] data) throws IOException {
+        var art = ImageIO.read(new ByteArrayInputStream(data));
+        
+        var max_dimension = Math.max(art.getWidth(), art.getHeight());
+        
+        var image = new BufferedImage(max_dimension, max_dimension, BufferedImage.TYPE_INT_ARGB);
+        
+        var g = image.getGraphics();
+        
+        g.drawImage(art, (max_dimension - art.getWidth()) / 2, (max_dimension - art.getHeight()) / 2, null);
+        
+        try (var baos = new ByteArrayOutputStream()) {
+            ImageIO.write(image, "png", baos);
+            
+            return baos.toByteArray();
+        }
     }
     
     private void saveImageCache(Path directory) {
