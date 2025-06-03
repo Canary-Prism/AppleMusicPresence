@@ -5,6 +5,7 @@ import club.minnced.discord.rpc.DiscordRPC;
 import club.minnced.discord.rpc.DiscordRichPresence;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.tagtraum.japlscript.execution.JaplScriptException;
 import com.tagtraum.japlscript.language.Tdta;
 import com.tagtraum.macos.music.Application;
 import com.tagtraum.macos.music.Epls;
@@ -282,11 +283,13 @@ public class Main implements Runnable {
         image_cache.synchronous()
                 .asMap()
                 .forEach((container, url) -> {
-                    var path = directory.resolve(String.valueOf(container.getTrackId()));
                     try {
+                        var path = directory.resolve(String.valueOf(container.getTrackId()));
                         Files.writeString(path, url, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
                     } catch (IOException e) {
                         log.error("failed to write image cache to disk: ", e);
+                    } catch (JaplScriptException e) {
+                        log.error("failed to get track id for {}", container);
                     }
                 });
     }
