@@ -17,6 +17,8 @@ import picocli.CommandLine;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.awt.image.ConvolveOp;
+import java.awt.image.Kernel;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -117,6 +119,8 @@ public class Main implements Runnable {
                     if (!(container instanceof RealTrack(var track)))
                         return null;
                     
+                    log.info("album art not found in cache, generating");
+                    
                     if (track.getArtworks().length == 0)
                         return null;
                     var art = track.getArtworks()[0];
@@ -169,6 +173,23 @@ public class Main implements Runnable {
         
         var g = image.getGraphics();
         
+        var blurred = blur(art);
+        
+        {
+            var blurred_min_dimension = Math.min(blurred.getWidth(), blurred.getHeight());
+//            log.info("blurred min dimension: {}", blurred_min_dimension);
+            var scale = (double) max_dimension / blurred_min_dimension;
+            var scaled_width = (int) (blurred.getWidth() * scale);
+            var scaled_height = (int) (blurred.getHeight() * scale);
+            var scaled = blurred.getScaledInstance(scaled_width, scaled_height, BufferedImage.SCALE_SMOOTH);
+            g.drawImage(
+                    scaled,
+                    (max_dimension - scaled_width) / 2,
+                    (max_dimension - scaled_height) / 2,
+                    null
+            );
+        }
+        
         g.drawImage(art, (max_dimension - art.getWidth()) / 2, (max_dimension - art.getHeight()) / 2, null);
         
         try (var baos = new ByteArrayOutputStream()) {
@@ -176,6 +197,72 @@ public class Main implements Runnable {
             
             return baos.toByteArray();
         }
+    }
+    
+    private BufferedImage blur(BufferedImage image) {
+        int radius = 100;
+        int size = radius * 2 + 1;
+        float weight = 1.0f / (size * size);
+        float[] data = new float[size * size];
+        
+        var midx = size / ((double) 2);
+        var midy = size / ((double) 2);
+        var count = 0;
+        for (int i = 0; i < size * size; i++) {
+            var x = i % size;
+            var y = i / size;
+            
+            var xdist = x - midx;
+            var ydist = y - midy;
+            
+            if (Math.sqrt(xdist * xdist + ydist * ydist) <= radius) {
+                count++;
+                data[i] = 1;
+            }
+            
+        }
+        for (int i = 0; i < size * size; i++) {
+            data[i] /= count;
+        }
+        
+        var kernels = makeKernels(100);
+        
+        var hop = new ConvolveOp(kernels.horizontal, ConvolveOp.EDGE_ZERO_FILL, null);
+        image = hop.filter(image, null);
+        
+        var vop = new ConvolveOp(kernels.vertical, ConvolveOp.EDGE_ZERO_FILL, null);
+        image = vop.filter(image, null);
+        
+//        return i;
+        return image.getSubimage(radius, radius, image.getWidth() - radius * 2, image.getHeight() - radius * 2);
+    }
+    
+    record KernelTuple(Kernel horizontal, Kernel vertical) {}
+    
+    private static KernelTuple makeKernels(float radius) {
+        int r = (int) Math.ceil(radius);
+        int rows = r * 2 + 1;
+        float[] matrix = new float[rows];
+        float sigma = radius / 3;
+        float sigma22 = 2 * sigma * sigma;
+        var sigmaPi2 = 2 * Math.PI * sigma;
+        float sqrtSigmaPi2 = (float) Math.sqrt(sigmaPi2);
+        float radius2 = radius * radius;
+        float total = 0;
+        int index = 0;
+        for (int row = -r; row <= r; row++) {
+            float distance = row * row;
+            if (distance > radius2)
+                matrix[index] = 0;
+            else
+                matrix[index] = (float) Math.exp(-(distance)/sigma22) / sqrtSigmaPi2;
+            total += matrix[index];
+            index++;
+        }
+        for (int i = 0; i < rows; i++)
+            matrix[i] /= total;
+        
+        return new KernelTuple(new Kernel(rows, 1, matrix), new Kernel(1, rows, matrix));
     }
     
     private void saveImageCache(Path directory) {
