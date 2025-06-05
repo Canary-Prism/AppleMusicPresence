@@ -38,7 +38,7 @@ public class Main implements Runnable {
     
     private static final ProjectDirectories DIRS = ProjectDirectories.from("", "canaryprism", "AppleMusicPresence");
     static {
-        System.setProperty("canaryprism.presence.apple.music", Path.of(DIRS.dataDir, "logs").toString());
+        System.setProperty("canaryprism.presence.apple.music.logdir", Path.of(DIRS.dataDir, "logs").toString());
         ImageIO.scanForPlugins();
     }
     
