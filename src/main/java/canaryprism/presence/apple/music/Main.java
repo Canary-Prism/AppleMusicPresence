@@ -381,7 +381,7 @@ public class Main implements Runnable {
         log.info("presence image: {}", presence.largeImageKey);
         
         if (!future_image_url.isDone())
-            future_image_url.thenRunAsync(() -> updatePresence(app.getCurrentTrack()));
+            future_image_url.thenRunAsync(() -> checkTrack(true));
         
         var remaining = ((long) (track.getFinish() - app.getPlayerPosition()));
         
