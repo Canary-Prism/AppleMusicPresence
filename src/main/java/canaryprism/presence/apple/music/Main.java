@@ -1,8 +1,5 @@
 package canaryprism.presence.apple.music;
 
-import club.minnced.discord.rpc.DiscordEventHandlers;
-import club.minnced.discord.rpc.DiscordRPC;
-import club.minnced.discord.rpc.DiscordRichPresence;
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.tagtraum.japlscript.execution.JaplScriptException;
@@ -11,6 +8,7 @@ import com.tagtraum.macos.music.Application;
 import com.tagtraum.macos.music.Epls;
 import com.tagtraum.macos.music.Track;
 import dev.dirs.ProjectDirectories;
+import discord.gamesdk.*;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +21,13 @@ import java.awt.image.Kernel;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -32,6 +37,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Base64;
 import java.util.concurrent.*;
+
+import static discord.gamesdk.discord_game_sdk_h.*;
 
 @CommandLine.Command(subcommands = Main.Set.class)
 public class Main implements Runnable {
@@ -46,11 +53,16 @@ public class Main implements Runnable {
     
     private static final Logger log = LoggerFactory.getLogger(Main.class);
     
-    private static final DiscordRPC rpc = DiscordRPC.INSTANCE;
     private static final Application app = Application.getInstance();
     
-    private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+    private static final Arena arena = Arena.ofShared();
+    
+    private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform()
+                    .uncaughtExceptionHandler((_, e) -> log.error("exception in scheduled executor: ", e))
+                    .factory());
     private final HttpClient client = HttpClient.newHttpClient();
+    
+    private MethodHandle update_activity, clear_activity;
     
     private AsyncLoadingCache<TrackContainer, String> image_cache;
     
@@ -58,6 +70,8 @@ public class Main implements Runnable {
     
     @Override
     public void run() {
+        
+        System.load("/Users/mia/Downloads/discord_game_sdk/discord_game_sdk/lib/aarch64/discord_game_sdk.dylib");
         
         var config_path = Path.of(DIRS.configDir);
         if (Files.notExists(config_path)) {
@@ -79,13 +93,13 @@ public class Main implements Runnable {
             }
         }
         
-        var event_handler = new DiscordEventHandlers();
-        event_handler.ready = (user) -> log.info("Ready: {}", user.username);
+//        var event_handler = new DiscordEventHandlers();
+//        event_handler.ready = (user) -> log.info("Ready: {}", user.username);
         
         var application_id_path = config_path.resolve("application_id");
-        String application_id;
+        long application_id;
         try {
-            application_id = Files.readString(application_id_path);
+            application_id = Long.parseLong(Files.readString(application_id_path));
         } catch (IOException e) {
             throw new RuntimeException("failed to read application id " + application_id_path, e);
         }
@@ -107,11 +121,75 @@ public class Main implements Runnable {
             log.warn("failed to load fallback image: ", e);
         }
         
-        rpc.Discord_Initialize(application_id, event_handler, false, null);
+        var linker = Linker.nativeLinker();
+        
 
+        
+        var create_params = DiscordCreateParams.allocate(arena);
+        
+        DiscordCreateParams.activity_version(create_params, DISCORD_ACTIVITY_MANAGER_VERSION());
+        
+        DiscordCreateParams.client_id(create_params, application_id);
+        DiscordCreateParams.flags(create_params, DiscordCreateFlags_Default());
+        DiscordCreateParams.event_data(create_params, NULL());
+        
+        var activity_events = IDiscordActivityEvents.allocate(arena);
+        
+        DiscordCreateParams.activity_events(create_params, activity_events);
+        var core_pointer = arena.allocate(C_POINTER.byteSize());
+        
+        var code = DiscordCreate(DISCORD_VERSION(), create_params, core_pointer);
+
+        var core = MemorySegment.ofAddress(core_pointer.get(C_LONG, 0)).reinterpret(IDiscordCore.sizeof());
+        
+        log.info("code: {}", code);
+        
+        log.info("core: {}", core.elements(C_CHAR).map((e) -> e.get(C_CHAR, 0)).toList());
+        
+        MemorySegment activity_manager;
+        try {
+            activity_manager = ((MemorySegment) linker.downcallHandle(IDiscordCore.get_activity_manager(core),
+                            FunctionDescriptor.of(C_POINTER, C_POINTER))
+                    .invoke(core));
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
+        
+        MethodHandle callback_handle;
+        try {
+            callback_handle = MethodHandles.lookup().findVirtual(Main.class, "callback", MethodType.methodType(void.class, MemorySegment.class, int.class));
+
+            callback_handle = MethodHandles.insertArguments(callback_handle, 0, this);
+        } catch (NoSuchMethodException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+        
+        var callback = linker.upcallStub(callback_handle, FunctionDescriptor.ofVoid(C_POINTER, C_INT), arena);
+
+        var update_activity_pointer = IDiscordActivityManager.update_activity(activity_manager);
+
+        this.update_activity = linker.downcallHandle(update_activity_pointer,
+                FunctionDescriptor.ofVoid(C_POINTER, C_POINTER, C_POINTER, C_POINTER));
+
+
+        this.update_activity = MethodHandles.insertArguments(update_activity, 2, NULL(), callback);
+        this.update_activity = MethodHandles.insertArguments(update_activity, 0, activity_manager);
+
+        var clear_activity_pointer = IDiscordActivityManager.clear_activity(activity_manager);
+
+        this.clear_activity = linker.downcallHandle(clear_activity_pointer,
+                FunctionDescriptor.ofVoid(C_POINTER, C_POINTER, C_POINTER));
+
+        this.clear_activity = MethodHandles.insertArguments(clear_activity, 0, activity_manager, NULL(), callback);
+        
+        
+        var run_callbacks_pointer = IDiscordCore.run_callbacks(core);
+        var run_callbacks = MethodHandles.insertArguments(
+                linker.downcallHandle(run_callbacks_pointer,
+                        FunctionDescriptor.of(C_INT, C_POINTER)),
+                0, core);
+        
         log.info("initialised");
-        
-        
         
         
         this.image_cache = Caffeine.newBuilder()
@@ -158,11 +236,28 @@ public class Main implements Runnable {
         
         Runtime.getRuntime().addShutdownHook(new Thread(() -> saveImageCache(image_cache_path)));
         
-        executor.scheduleAtFixedRate(rpc::Discord_RunCallbacks, 0, 2, TimeUnit.SECONDS);
         
-        executor.scheduleAtFixedRate(this::checkTrack, 0, 5, TimeUnit.SECONDS);
+        executor.scheduleAtFixedRate(() -> {
+            try {
+                run_callbacks.invoke();
+            } catch (Throwable e) {
+                log.error("exception while calling the discord game sdk callback: ", e);
+            }
+        }, 0, 2, TimeUnit.SECONDS);
+        
+        executor.scheduleAtFixedRate(() -> {
+            try {
+                this.checkTrack();
+            } catch (Exception e) {
+                log.error("exception while checking track: ", e);
+            }
+        }, 0, 5, TimeUnit.SECONDS);
         
         executor.scheduleAtFixedRate(() -> saveImageCache(image_cache_path), 0, 10, TimeUnit.MINUTES);
+    }
+    
+    private void callback(MemorySegment m, int code) {
+        log.info("callback: {}", code);
     }
     
     private byte[] optimiseImage(byte[] data) throws IOException {
@@ -352,7 +447,12 @@ public class Main implements Runnable {
             }
         } else if (status_active) {
             status_active = false;
-            rpc.Discord_ClearPresence();
+            
+            try {
+                clear_activity.invoke();
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
             
             synchronized (this) {
                 if (track_end_check != null)
@@ -367,29 +467,63 @@ public class Main implements Runnable {
     private volatile ScheduledFuture<?> track_end_check;
     
     private void updatePresence(Track track) {
-        var presence = new DiscordRichPresence();
-        presence.startTimestamp = (System.currentTimeMillis() / 1000) - ((long) app.getPlayerPosition());
-        presence.details = track.getName();
-        presence.state = track.getArtist();
-
-        var future_image_url = image_cache.get(new RealTrack(track));
+        var activity = DiscordActivity.allocate(arena);
         
-        presence.largeImageKey = future_image_url.getNow(fallback_image);
+        DiscordActivity.type(activity, DiscordActivityType_Listening());
         
-        presence.largeImageText = track.getAlbum();
+        var timestamps = DiscordActivityTimestamps.allocate(arena);
         
-        log.info("presence image: {}", presence.largeImageKey);
-        
-        if (!future_image_url.isDone())
-            future_image_url.thenRunAsync(() -> checkTrack(true));
-        
+        DiscordActivityTimestamps.start(timestamps, (System.currentTimeMillis() / 1000) - ((long) app.getPlayerPosition()));
         var remaining = ((long) (track.getFinish() - app.getPlayerPosition()));
         
-        presence.endTimestamp = (System.currentTimeMillis() / 1000) + remaining;
+        DiscordActivityTimestamps.end(timestamps, (System.currentTimeMillis() / 1000) + remaining);
+        
+        DiscordActivity.timestamps(activity, timestamps);
+        
+        
+        
+        var buffer = MemorySegment.ofArray(new byte[128]);
+
+        buffer.setString(0, track.getName());
+        DiscordActivity.details(activity, buffer);
+        buffer.fill(((byte) 0));
+        
+        buffer.setString(0, track.getArtist());
+        DiscordActivity.state(activity, buffer);
+        buffer.fill((byte) 0);
+        
+        
+        
+        var assets = DiscordActivityAssets.allocate(arena);
+        
+        var future_image_url = image_cache.get(new RealTrack(track));
+        
+        var image_url = future_image_url.getNow(fallback_image);
+        
+        buffer.setString(0, image_url);
+        DiscordActivityAssets.large_image(assets, buffer);
+        buffer.fill(((byte) 0));
+        
+        buffer.setString(0, track.getAlbum());
+        DiscordActivityAssets.large_text(assets, buffer);
+        buffer.fill(((byte) 0));
+        
+        DiscordActivity.assets(activity, assets);
+        
+        log.info("presence image: {}", image_url);
+        
+        if (!future_image_url.isDone()) {
+            future_image_url.thenRunAsync(() -> checkTrack(true));
+        }
+        
         
         log.info("presence updated: {} - {}", track.getArtist(), track.getName());
         
-        rpc.Discord_UpdatePresence(presence);
+        try {
+            update_activity.invoke(activity);
+        } catch (Throwable e) {
+            throw new RuntimeException(e);
+        }
         
         synchronized (this) {
             if (track_end_check == null) {
