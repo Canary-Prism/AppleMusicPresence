@@ -407,7 +407,9 @@ public class Main implements Runnable {
         
         
         activity.setDetails(track.getName());
-        activity.setState(track.getArtist());
+        activity.setState(Optional.of(track.getArtist())
+                .filter((e) -> !e.isEmpty())
+                .orElse(null));
         
         var assets = activity.assets();
         
