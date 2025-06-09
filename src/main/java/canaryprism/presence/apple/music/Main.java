@@ -42,6 +42,8 @@ import java.util.concurrent.*;
 public class Main implements Runnable {
     
     private static final ProjectDirectories DIRS = ProjectDirectories.from("", "canaryprism", "AppleMusicPresence");
+    public static final int LENGTH_LIMIT = 128;
+    
     static {
         System.setProperty("canaryprism.presence.apple.music.logdir", Path.of(DIRS.dataDir, "logs").toString());
         ImageIO.scanForPlugins();
@@ -409,6 +411,7 @@ public class Main implements Runnable {
         activity.setDetails(track.getName());
         activity.setState(Optional.of(track.getArtist())
                 .filter((e) -> !e.isEmpty())
+                .map((e) -> e.substring(0, Math.min(e.length(), LENGTH_LIMIT)))
                 .orElse(null));
         
         var assets = activity.assets();
@@ -420,9 +423,8 @@ public class Main implements Runnable {
         assets.setLargeImage(image_url);
         assets.setLargeText(Optional.of(track.getAlbum())
                 .filter((e) -> !e.isEmpty())
+                .map((e) -> e.substring(0, Math.min(e.length(), LENGTH_LIMIT)))
                 .orElse(null));
-        
-        log.info("assets largeimagetext: {}", assets.getLargeText());
         
         log.info("presence image: {}", image_url);
         
