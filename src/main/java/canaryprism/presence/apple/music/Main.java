@@ -217,8 +217,8 @@ public class Main implements Runnable {
         }
         
         g.drawImage(art, (max_dimension - art.getWidth()) / 2, (max_dimension - art.getHeight()) / 2, null);
-        
         try (var baos = new ByteArrayOutputStream()) {
+            
             ImageIO.write(image, "png", baos);
             
             return baos.toByteArray();
@@ -227,31 +227,8 @@ public class Main implements Runnable {
     
     private BufferedImage blur(BufferedImage image) {
         int radius = 100;
-        int size = radius * 2 + 1;
-        float weight = 1.0f / (size * size);
-        float[] data = new float[size * size];
         
-        var midx = size / ((double) 2);
-        var midy = size / ((double) 2);
-        var count = 0;
-        for (int i = 0; i < size * size; i++) {
-            var x = i % size;
-            var y = i / size;
-            
-            var xdist = x - midx;
-            var ydist = y - midy;
-            
-            if (Math.sqrt(xdist * xdist + ydist * ydist) <= radius) {
-                count++;
-                data[i] = 1;
-            }
-            
-        }
-        for (int i = 0; i < size * size; i++) {
-            data[i] /= count;
-        }
-        
-        var kernels = makeKernels(100);
+        var kernels = makeKernels(radius);
         
         var hop = new ConvolveOp(kernels.horizontal, ConvolveOp.EDGE_ZERO_FILL, null);
         image = hop.filter(image, null);
@@ -295,7 +272,7 @@ public class Main implements Runnable {
         log.info("saving image cache to '{}'", directory);
         try (var files = Files.list(directory)) {
             files.filter(Files::isRegularFile)
-                    .forEach(path -> {
+                    .forEach((path) -> {
                         try {
                             Files.delete(path);
                         } catch (IOException e) {
