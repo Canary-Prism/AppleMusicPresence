@@ -26,6 +26,8 @@ repositories {
 
 dependencies {
 
+    implementation("com.github.mizosoft.methanol:methanol:1.8.4")
+
     implementation("com.github.JnCrMx:discord-game-sdk4j:v1.0.0")
 
     implementation(libs.obstmusic)

@@ -2,6 +2,7 @@ package canaryprism.presence.apple.music;
 
 import com.github.benmanes.caffeine.cache.AsyncLoadingCache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.mizosoft.methanol.MultipartBodyPublisher;
 import com.tagtraum.japlscript.execution.JaplScriptException;
 import com.tagtraum.japlscript.language.Tdta;
 import com.tagtraum.macos.music.Application;
@@ -13,6 +14,7 @@ import de.jcm.discordgamesdk.CreateParams;
 import de.jcm.discordgamesdk.activity.Activity;
 import de.jcm.discordgamesdk.activity.ActivityType;
 import dev.dirs.ProjectDirectories;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -153,13 +155,17 @@ public class Main implements Runnable {
 //                            .put("source", Base64.getEncoder().encodeToString(data));
                     
                     var encoded = Base64.getMimeEncoder().encodeToString(data);
-                    var form = new HTTPRequestMultipartBody.Builder()
-                            .addPart("source", encoded)
+//                    var form = new HTTPRequestMultipartBody.Builder()
+//                            .addPart("source", encoded)
+//                            .build();
+                    var form = MultipartBodyPublisher.newBuilder()
+                            .textPart("source", encoded)
                             .build();
+                    
 //                    System.out.println(encoded);
                     var request = HttpRequest.newBuilder(URI.create("https://freeimage.host/api/1/upload?key=" + api_key))
-                            .header("Content-Type", form.getContentType())
-                            .POST(HttpRequest.BodyPublishers.ofByteArray(form.getBody()))
+                            .header("Content-Type", form.mediaType().toString())
+                            .POST(form)
                             .build();
                     
                     log.info("uploading image for track {}", track.getName());
@@ -168,8 +174,12 @@ public class Main implements Runnable {
                     
                     var response = new JSONObject(http_response.body());
                     
-                    
-                    return response.getJSONObject("image").getString("url");
+                    try {
+                        return response.getJSONObject("image").getString("url");
+                    } catch (JSONException e) {
+                        log.error("failed to get image url from response:\n{}", response.toString(2), e);
+                        return null;
+                    }
                 });
         
         loadImageCache(image_cache_path);
